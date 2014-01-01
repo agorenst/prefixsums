@@ -30,30 +30,6 @@ void time_prefix_sums(unsigned n = 100000000) {
     prefix_sums<int*, int*, int>(test, test+n, test_res);
 }
 
-bool test_cont_sum(unsigned n = 100000000) {
-    int* test = new int[n];
-    rand_array(test, n);
-    int* control = new int[n];
-    int* control_res = new int[n];
-    copy_array(test, control, n);
-
-    cont_prefix_sums(test, n);
-
-    control_res[0] = control[0];
-    for (unsigned i = 1; i < n; ++i) {
-        control_res[i] = control[i]+control_res[i-1];
-    }
-
-    //print_array(test_res, n);
-    //print_array(control_res, n);
-
-    auto res = equal_arrays(test, control_res, n);
-    delete test;
-    delete control;
-    delete control_res;
-    return res;
-}
-
 bool test_prefix_sums(unsigned n = 100000000) {
     int* test = new int[n];
     int* test_res = new int[n];
@@ -65,7 +41,7 @@ bool test_prefix_sums(unsigned n = 100000000) {
     //print_array(test, n);
     //print_array(control, n);
 
-    smaller_prefix_sums<int*, int*, int>(test, test+n, test_res);
+    prefix_sums(test, n);
 
     control_res[0] = control[0];
     for (unsigned i = 1; i < n; ++i) {

@@ -1,5 +1,5 @@
-#include "tree_array.h"
-
+#include <iostream>
+using namespace std;
 /*
  * This computes the "prefix sums" of a given array.
  * With infinite processors and other somesuch dreams,
@@ -25,130 +25,74 @@
  *    i == 1     s_1 = x_1
  *    i odd > 1  s_i = z_{(i-1)/2}*x_i
  */
-/*
+
+
+// this is also just for debugging
+template<class T>
+void print_array(const T A[], const int size, std::ostream& o = std::cout) {
+    for (int i = 0; i < size; ++i) {
+        o << A[i] << " ";
+    }
+    o << std::endl;
+}
+
+
+// this is just for debugging
 template<typename T>
-void cont_prefix_sums(T* a, int n) {
-    cont_tree_array<T> A(a, n);
-
-    for (int h = 1; (1 << h) <= n; ++h) {
-        for (int i = 0; i < n / (1 << h); ++i) {
-            A(h,i) =  A(h-1,2*i+1) + A(h-1, 2*i);
-        }
-    }
-
-    for (int h = A.height; h >= 0; --h) {
-        for (int i = 0; i < n / (1 << h); ++i) {
-            if (i == 0) {
-            } else if (i % 2 == 1) {
-                A(h,i) = A(h+1,(i-1)/2);
-            } else {
-                A(h,i) = A(h+1,(i/2)-1) + A(h,i);
-            }
-        }
+void serial_sums(T* a, size_t n) {
+    for (size_t i = 1; i < n; ++i) {
+        a[i] = a[i]+a[i-1];
     }
 }
 
-template<typename dataIter, typename outIter, typename T>
-void contiguous_prefix_sums(dataIter begin, dataIter end, outIter output) {
-    tree_array<T> B(begin, end);
-    int n = B.n;
+/* Valgrind with --tool=drd reveals there are read/write conflicts,
+ * but I am not sure if that's right.
+ * I suspect it may be confused by the fact that the length of the
+ * iteration changes, but everything is safe (parameterized by h)
+ */
+template<typename T>
+void prefix_sums(T* a, size_t n) {
+    // assume n is a power of two>1
+    size_t height = 0;
+    while (static_cast<size_t>(1 << height) <= n) { ++height; } // we increment height 1 beyond the log
+
+    // mem is the internal nodes of the binary tree, we know its size
+    // This section defines the "tree", which we call STORE.
+    T* mem = new T[n-1];
+    T** store = new T*[height];
+    store[0] = a; // leaves
+    store[1] = mem; // assuming n > 1;
+    for (size_t i = 2; i < height; ++i) {
+        auto offset = (1 << (height - i));
+        store[i] = store[i-1]+offset;
+    }
 
     // this is the first half of the algorithm (with recursion unrolled).
     // for h = 0 (the leaves of B), we've already initialized them.
-    for (int h = 1; (1 << h) <= n; ++h) {
+    for (size_t h = 1; static_cast<size_t>(1 << h) <= n; ++h) {
         // this is the first loop in the psuedocode.
         // the [h-1] index is the recursion count, and the second index is x_{2i} etc.
-        for (int i = 0; i < n / (1 << h); ++i) {
-            B[h][i] = B[h-1][2*i+1] + B[h-1][2*i];
+#pragma omp parallel for
+        for (size_t i = 0; i < static_cast<size_t>(n / static_cast<size_t>(1 << h)); ++i) {
+            store[h][i] = store[h-1][2*i+1] + store[h-1][2*i];
         }
     }
 
     // now we do the second loop.
-    for (int h = B.height; h >= 0; --h) {
-        for (int i = 0; i < n / (1<<h); ++i) {
+    for (size_t h = height; h >= 0; --h) {
+#pragma omp parallel for
+        for (size_t i = 0; i < n / (1<<h); ++i) {
             if (i == 0) {
             } else if (i % 2 == 1) {
-                B[h][i] = B[h+1][(i-1)/2];
+                store[h][i] = store[h+1][(i-1)/2];
             } else {
-                B[h][i] = B[h+1][(i/2)-1] + B[h][i];
+                store[h][i] = store[h+1][(i/2)-1] + store[h][i];
             }
         }
     }
 
-    for (int i = 0; i < n; ++i) {
-        *output = B[0][i];
-        ++output;
-    }
+    delete [] store;
+    delete [] mem;
+
+    // What's left? The original input array has been modified with the solution
 }
-
-template<typename dataIter, typename outIter, typename T>
-void smaller_prefix_sums(dataIter begin, dataIter end, outIter output) {
-    tree_array<T> B(begin, end);
-    int n = B.n;
-
-    // this is the first half of the algorithm (with recursion unrolled).
-    // for h = 0 (the leaves of B), we've already initialized them.
-    for (int h = 1; (1 << h) <= n; ++h) {
-        // this is the first loop in the psuedocode.
-        // the [h-1] index is the recursion count, and the second index is x_{2i} etc.
-#pragma omp parallel for
-        for (int i = 0; i < n / (1 << h); ++i) {
-            B[h][i] = B[h-1][2*i+1] + B[h-1][2*i];
-        }
-    }
-
-    // now we do the second loop.
-    for (int h = B.height; h >= 0; --h) {
-#pragma omp parallel for
-        for (int i = 0; i < n / (1<<h); ++i) {
-            if (i == 0) {
-            } else if (i % 2 == 1) {
-                B[h][i] = B[h+1][(i-1)/2];
-            } else {
-                B[h][i] = B[h+1][(i/2)-1] + B[h][i];
-            }
-        }
-    }
-
-    for (int i = 0; i < n; ++i) {
-        *output = B[0][i];
-        ++output;
-    }
-}
-
-template<typename dataIter, typename outIter, typename T>
-void prefix_sums(dataIter begin, dataIter end, outIter output) {
-
-    tree_array<T> B(begin, end);
-    int n = B.n;
-
-    // the first pass, build the tree up
-    int h;
-    for (h = 1; (1<<h) <= n; ++h) {
-#pragma omp parallel for
-        for (int i = 0; i < n / (1<<h); ++i) {
-            B[h][i] = B[h-1][2*i+1] + B[h-1][2*i];
-        }
-    }
-
-    // the second pass, build shit down (why do we need a second tree_array?
-    tree_array<T> C(begin, end);
-    for (; h >= 0; --h) {
-#pragma omp parallel for
-        for (int i = 0; i < n / (1<<h); ++i) {
-            if (i == 0) {
-                C[h][i] = B[h][i];
-            } else if (i % 2 == 1) {
-                C[h][i] = C[h+1][(i-1)/2];
-            } else {
-                C[h][i] = C[h+1][(i/2)-1] + B[h][i];
-            }
-        }
-    }
-
-    for (int i = 0; i < n; ++i) {
-        *output = C[0][i];
-        ++output;
-    }
-}
-*/
