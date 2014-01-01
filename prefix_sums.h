@@ -4,8 +4,7 @@ using namespace std;
  * This computes the "prefix sums" of a given array.
  * With infinite processors and other somesuch dreams,
  * it runs in logn time with linear work, which is optimal
- * 
- * This does run very nicely, better than other implementations.
+ * * This does run very nicely, better than other implementations.
  *
  * To do: parameterize the + function, so it can take any
  * appropriate operator.
@@ -53,8 +52,8 @@ void serial_sums(T* a, size_t n) {
 template<typename T>
 void prefix_sums(T* a, size_t n) {
     // assume n is a power of two>1
-    size_t height = 0;
-    while (static_cast<size_t>(1 << height) <= n) { ++height; } // we increment height 1 beyond the log
+    unsigned height = 0;
+    while (unsigned((1 << height)) <= n) { ++height; } // we increment height 1 beyond the log
 
     // mem is the internal nodes of the binary tree, we know its size
     // This section defines the "tree", which we call STORE.
@@ -62,26 +61,28 @@ void prefix_sums(T* a, size_t n) {
     T** store = new T*[height];
     store[0] = a; // leaves
     store[1] = mem; // assuming n > 1;
-    for (size_t i = 2; i < height; ++i) {
-        auto offset = (1 << (height - i));
+    for (unsigned i = 2; i < height; ++i) {
+        unsigned offset = (1 << (height - i));
         store[i] = store[i-1]+offset;
     }
 
+
     // this is the first half of the algorithm (with recursion unrolled).
     // for h = 0 (the leaves of B), we've already initialized them.
-    for (size_t h = 1; static_cast<size_t>(1 << h) <= n; ++h) {
+    for (unsigned h = 1; unsigned(1 << h) <= n; ++h) {
         // this is the first loop in the psuedocode.
         // the [h-1] index is the recursion count, and the second index is x_{2i} etc.
 #pragma omp parallel for
-        for (size_t i = 0; i < static_cast<size_t>(n / static_cast<size_t>(1 << h)); ++i) {
+        for (unsigned i = 0; i < (n / (1 << h)); ++i) {
             store[h][i] = store[h-1][2*i+1] + store[h-1][2*i];
         }
     }
 
     // now we do the second loop.
-    for (size_t h = height; h >= 0; --h) {
+    // if this is unsigned, something horrible happens (the test never fails!)
+    for (int h = height-2; h >= 0; --h) {
 #pragma omp parallel for
-        for (size_t i = 0; i < n / (1<<h); ++i) {
+        for (unsigned i = 0; i < n / (1<<h); ++i) {
             if (i == 0) {
             } else if (i % 2 == 1) {
                 store[h][i] = store[h+1][(i-1)/2];
